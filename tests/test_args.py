@@ -43,7 +43,7 @@ def test_arg_help_and_wrong():
     assert e.value.code == 10
 
 def test_arg_help_and_help():
-    sys.argv = ['parse.py', '--help', '--help']
+    sys.argv = ['parse.py', '--help', '-h']
     with pytest.raises(SystemExit) as e:
         parse_args()
     assert e.value.code == 10
