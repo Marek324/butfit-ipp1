@@ -2,7 +2,6 @@
 # Author: Marek hric xhricma00
 
 import sys
-import argparse
 from enum import Enum
 
 class ExitCode(Enum):
@@ -22,5 +21,22 @@ class ExitCode(Enum):
     INTERNAL_ERROR = 99
 
 
+def parse_args():
+    if len(sys.argv) > 2:
+        print("Wrong number of arguments")
+        sys.exit(ExitCode.WRONG_ARGS.value, file=sys.stderr)
+    elif len(sys.argv) == 2:
+        if sys.argv[1] == "--help" or sys.argv[1] == "-h":
+            print("usage: parse.py [-h]\n\nParser for SOL25\n\noptions:\n-h, --help  show this help message and exit")
+            sys.exit(ExitCode.SUCCESS.value)
+        else:
+            print("Wrong argument", file=sys.stderr)
+            sys.exit(ExitCode.WRONG_ARGS.value)
+
+
 if __name__ == "__main__":
-    ...
+    parse_args()
+
+    
+    
+
