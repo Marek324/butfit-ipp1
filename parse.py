@@ -23,8 +23,8 @@ class ExitCode(Enum):
 
 def parse_args():
     if len(sys.argv) > 2:
-        print("Wrong number of arguments")
-        sys.exit(ExitCode.WRONG_ARGS.value, file=sys.stderr)
+        print("Wrong number of arguments", file=sys.stderr)
+        sys.exit(ExitCode.WRONG_ARGS.value)
     elif len(sys.argv) == 2:
         if sys.argv[1] == "--help" or sys.argv[1] == "-h":
             print("usage: parse.py [-h]\n\nParser for SOL25\n\noptions:\n-h, --help  show this help message and exit")
@@ -33,10 +33,13 @@ def parse_args():
             print("Wrong argument", file=sys.stderr)
             sys.exit(ExitCode.WRONG_ARGS.value)
 
+    return
+
+def main():
+    parse_args()
+    print("Hello world")
+
 
 if __name__ == "__main__":
-    parse_args()
-
-    
-    
-
+    main()
+    sys.exit(ExitCode.SUCCESS.value)
