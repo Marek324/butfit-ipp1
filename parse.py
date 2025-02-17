@@ -80,7 +80,21 @@ COMMENT: /"([^"]*)"/
 %ignore COMMENT
 """
 
-parser = Lark(grammar, start="start", parser="lalr", debug=True)
+def save_description(token):
+    """
+    Callback function to save first comment as description.
+    """
+    global description
+    comment = token.value
+    if description is None:
+        description = comment
+        return ""
+    else:
+        return ""
+
+parser = Lark(grammar, start="start", parser="lalr", lexer_callbacks={"COMMENT": save_description})
+language = "SOL25"
+description = None
 
 def parse_code(code):
     """
