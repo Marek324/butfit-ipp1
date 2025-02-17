@@ -3,6 +3,7 @@
 
 import sys
 from lark import Lark, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
+from lark.tree import pydot__tree_to_png
 
 # Exit codes
 SUCCESS = 0
@@ -42,22 +43,22 @@ def parse_args():
             sys.exit(WRONG_ARGS)
 
 grammar = """
-?start: program
+?start: program?
 
 program: class program? 
-class: "class" term_cid ":" term_cid "{" method "}"
+class: "class" term_cid ":" term_cid "{" method? "}"
 method: selector block method?
 
-selector: term_id | term_id_ selector_tail
-selector_tail: term_id_ selector_tail?
+selector: term_id | term_id ":" selector_tail?
+selector_tail: term_id ":" selector_tail?
 
-block: "[" block_par "|" block_stat "]"
-block_par: term__id block_par?
+block: "[" block_par? "|" block_stat? "]"
+block_par: ":" term_id block_par?
 block_stat: term_id ":=" expr "." block_stat?
 
 expr: expr_base expr_tail
-expr_tail: term_id | expr_sel
-expr_sel: term_id_ expr_base expr_sel?
+expr_tail: term_id | expr_sel?
+expr_sel: term_id ":" expr_base expr_sel?
 expr_base: term_int 
         | term_str 
         | term_id 
@@ -66,12 +67,10 @@ expr_base: term_int
         | "(" expr ")"
 
 
-term_int: /["+"|"-"][1-9]+/
-term_str: /''/
-term_id: /a/
-term_id_: /b/
-term__id: /c/
-term_cid: /d/
+term_int: /[+\-]?[0-9]+/
+term_str: /'([^'\\\n]|\\['n\\])*\'/x
+term_id: /[a-z_][a-zA-Z0-9_]*/
+term_cid: /[A-Z][a-zA-Z0-9_]*/
 
 
 COMMENT: /"([^"]*)"/
@@ -81,11 +80,7 @@ COMMENT: /"([^"]*)"/
 %ignore COMMENT
 """
 
-parser = Lark(grammar, start="start", parser="lalr")
-
-# Lark transformer
-class TreeToAST(Transformer):
-    ...
+parser = Lark(grammar, start="start", parser="lalr", debug=True)
 
 def parse_code(code):
     """
@@ -95,14 +90,45 @@ def parse_code(code):
         code: The input code as a string.
 
     Returns:
-        The Abstract Syntax Tree (AST) if parsing is successful.
+        The parse tree if parsing is successful.
 
     Exits:
         LEXICAL_ERROR if a lexical error occurs.
         SYNTAX_ERROR if a syntactic error occurs.
         INTERNAL_ERROR if an internal error occurs.
     """
+    try:
+        tree = parser.parse(code)
+        # pydot__tree_to_png(tree, "parse_tree.png")
+        return tree
+    except UnexpectedCharacters as e:
+        print("Lexical error: " + str(e), file=sys.stderr)
+        sys.exit(LEXICAL_ERROR)
+    except UnexpectedToken as e:
+        print("Syntax error: " + str(e), file=sys.stderr)
+        sys.exit(SYNTAX_ERROR)
+    except UnexpectedEOF as e:
+        print("Syntax error: " + str(e), file=sys.stderr)
+        sys.exit(SYNTAX_ERROR)
+    except Exception as e:
+        print("Internal error: " + str(e), file=sys.stderr)
+        sys.exit(INTERNAL_ERROR)
+
+# Lark transformer
+class TreeToAST(Transformer):
     ...
+
+def tree_to_ast(tree):
+    """
+    Converts the parse tree to an abstract syntax tree (AST) using the TreeToAST transformer.
+
+    Args:
+        tree: Parse tree.
+
+    Returns:
+        AST.
+    """
+    return TreeToAST().transform(tree)
 
 def analyze_semantics(ast):
     """
@@ -135,7 +161,8 @@ def print_ast_as_xml(ast):
 def main():
     parse_args()
     code = sys.stdin.read()
-    ast = parse_code(code)
+    tree = parse_code(code)
+    ast = tree_to_ast(tree)
     ast = analyze_semantics(ast)
     print_ast_as_xml(ast)
 
