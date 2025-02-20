@@ -1,8 +1,8 @@
 # parse.py
 # Author: Marek hric xhricma00
 
-import sys
-from lark import Lark, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
+import sys, re
+from lark import Lark, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF, Token
 from lark.tree import pydot__tree_to_png
 
 # Exit codes
@@ -68,9 +68,9 @@ expr_base: term_int
 
 
 term_int: /[+\-]?[0-9]+/
-term_str: /'([^'\\\n]|\\['n\\])*\'/x
+term_str: /'([^'\\\\\n]|\\\\['n\\\\])*\'/x
 term_id: /[a-z_][a-zA-Z0-9_]*/
-term_cid: /[A-Z][a-zA-Z0-9_]*/
+term_cid: /[A-Z][a-zA-Z0-9]*/
 
 
 COMMENT: /"([^"]*)"/
@@ -87,7 +87,7 @@ def save_description(token):
     global description
     comment = token.value
     if description is None:
-        description = comment
+        description = re.sub(r"[\n\r]+", "&nbsp;", comment)
         return ""
     else:
         return ""
@@ -114,6 +114,8 @@ def parse_code(code):
     try:
         tree = parser.parse(code)
         # pydot__tree_to_png(tree, "parse_tree.png")
+        # print(description)
+        # print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
