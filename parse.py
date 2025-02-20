@@ -2,8 +2,10 @@
 # Author: Marek hric xhricma00
 
 import sys, re
-from lark import Lark, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF, Token
+from lark import Lark, Visitor, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 from lark.tree import pydot__tree_to_png
+import xml.etree.ElementTree as ET
+
 
 # Exit codes
 SUCCESS = 0
@@ -49,16 +51,16 @@ program: class program?
 class: "class" term_cid ":" term_cid "{" method? "}"
 method: selector block method?
 
-selector: term_id | term_id ":" selector_tail?
-selector_tail: term_id ":" selector_tail?
+selector: term_id | term_sel_id selector_tail?
+selector_tail: term_sel_id selector_tail?
 
 block: "[" block_par? "|" block_stat? "]"
-block_par: ":" term_id block_par?
+block_par: term_block_par_id block_par?
 block_stat: term_id ":=" expr "." block_stat?
 
 expr: expr_base expr_tail
 expr_tail: term_id | expr_sel?
-expr_sel: term_id ":" expr_base expr_sel?
+expr_sel: term_sel_id expr_base expr_sel?
 expr_base: term_int 
         | term_str 
         | term_id 
@@ -70,6 +72,8 @@ expr_base: term_int
 term_int: /[+\-]?[0-9]+/
 term_str: /'([^'\\\\\n]|\\\\['n\\\\])*\'/x
 term_id: /[a-z_][a-zA-Z0-9_]*/
+term_sel_id: /[a-z_][a-zA-Z0-9_]*:/ 
+term_block_par_id: /:[a-z_][a-zA-Z0-9_]*/ 
 term_cid: /[A-Z][a-zA-Z0-9]*/
 
 
@@ -115,7 +119,7 @@ def parse_code(code):
         tree = parser.parse(code)
         # pydot__tree_to_png(tree, "parse_tree.png")
         # print(description)
-        # print(tree.pretty())
+        print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
@@ -181,7 +185,7 @@ def main():
     ast = tree_to_ast(tree)
     ast = analyze_semantics(ast)
     print_ast_as_xml(ast)
-
+    # Note: Consider using lark.Visitor for semantic analysis and lark.Transformer for XML transformation.
 
 if __name__ == "__main__":
     main()
