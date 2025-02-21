@@ -2,7 +2,7 @@
 # Author: Marek hric xhricma00
 
 import sys, re
-from lark import Lark, Visitor, Transformer, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
+from lark import Lark, Visitor, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 from lark.tree import pydot__tree_to_png
 import xml.etree.ElementTree as ET
 
@@ -70,7 +70,7 @@ expr_base: term_int
 
 
 term_int: /[+\-]?[0-9]+/
-term_str: /'([^'\\\\\n]|\\\\['n\\\\])*\'/x
+term_str: /'([^'\\\\\n]|\\['n\\\\])*\'/x
 term_id: /[a-z_][a-zA-Z0-9_]*/
 term_sel_id: /[a-z_][a-zA-Z0-9_]*:/ 
 term_block_par_id: /:[a-z_][a-zA-Z0-9_]*/ 
@@ -135,39 +135,31 @@ def parse_code(code):
         sys.exit(INTERNAL_ERROR)
 
 # Lark transformer
-class TreeToAST(Transformer):
+class SemanticAnalyzer(Visitor):
+    def __init__(self):
+        self.variables = {}
+        self.functions = {}
+        self.current_function = None
     ...
 
-def tree_to_ast(tree):
+def analyze_semantics(tree):
     """
-    Converts the parse tree to an abstract syntax tree (AST) using the TreeToAST transformer.
+    Performs semantic analysis of the parse tree using lark Visitor.
 
     Args:
-        tree: Parse tree.
-
-    Returns:
-        AST.
-    """
-    return TreeToAST().transform(tree)
-
-def analyze_semantics(ast):
-    """
-    Performs semantic analysis of the AST.
-
-    Args:
-        ast: AST.
+        tree: lark parse tree.
     
     Returns:
-        AST if semantic analysis is successful.
+        tree: lark parse tree with semantic analysis.
 
-    Exits:
+    Exits: 
         SEM_MISSING_MAIN if the main function is missing.
         SEM_UNDEF_VAR if an undefined variable is used.
         SEM_ARITY if a function is called with the wrong number of arguments.
         SEM_VAR_CONFLICT if a variable is redefined.
         INTERNAL_ERROR if an internal error occurs.
     """
-    ...
+    return SemanticAnalyzer().visit_topdown(tree)
 
 def print_ast_as_xml(ast):
     """
@@ -182,10 +174,8 @@ def main():
     parse_args()
     code = sys.stdin.read()
     tree = parse_code(code)
-    ast = tree_to_ast(tree)
-    ast = analyze_semantics(ast)
-    print_ast_as_xml(ast)
-    # Note: Consider using lark.Visitor for semantic analysis and lark.Transformer for XML transformation.
+    tree = analyze_semantics(tree)
+    print_ast_as_xml(tree)
 
 if __name__ == "__main__":
     main()
