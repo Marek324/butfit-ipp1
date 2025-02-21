@@ -31,6 +31,7 @@ def parse_args():
         None if the arguments are correct.
 
     Exits:
+        SUCCESS if the help message is printed.
         WRONG_ARGS if the number of arguments is incorrect or the argument is invalid.
     """
     if len(sys.argv) > 2:
@@ -38,7 +39,7 @@ def parse_args():
         sys.exit(WRONG_ARGS)
     elif len(sys.argv) == 2:
         if sys.argv[1] == "--help" or sys.argv[1] == "-h":
-            print("usage: parse.py [-h]\n\nParser for SOL25\n\noptions:\n-h, --help  show this help message and exit")
+            print("usage: parse.py [-h | --help]\n\nParser for SOL25\nOutputs XML representation\n\noptions:\n-h, --help  show this help message and exit")
             sys.exit(SUCCESS)
         else:
             print("Wrong argument", file=sys.stderr)
@@ -70,7 +71,7 @@ expr_base: term_int
 
 
 term_int: /[+\-]?[0-9]+/
-term_str: /'([^'\\\\\n]|\\['n\\\\])*\'/x
+term_str: /'([^'\\\\\n]|\\\\['n\\\\])*\'/x
 term_id: /[a-z_][a-zA-Z0-9_]*/
 term_sel_id: /[a-z_][a-zA-Z0-9_]*:/ 
 term_block_par_id: /:[a-z_][a-zA-Z0-9_]*/ 
