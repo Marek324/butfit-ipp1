@@ -139,8 +139,6 @@ def parse_code(code):
 class SemanticAnalyzer(Visitor):
     def __init__(self):
         self.variables = {}
-        self.functions = {}
-        self.current_function = None
     ...
 
 def analyze_semantics(tree):
