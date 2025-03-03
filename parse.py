@@ -9,8 +9,6 @@ import xml.etree.ElementTree as ET
 # Exit codes
 SUCCESS = 0
 WRONG_ARGS = 10
-FILE_READ_ERROR = 11
-FILE_WRITE_ERROR = 12
 
 LEXICAL_ERROR = 21
 SYNTAX_ERROR = 22
