@@ -3,7 +3,6 @@
 
 import sys, re
 from lark import Lark, Visitor, Token, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
-from lark.tree import pydot__tree_to_png
 import xml.etree.ElementTree as ET
 
 
@@ -248,6 +247,9 @@ def check_assignements(block_params, def_vars, block_stat, analyzer):
 def get_block_params(block_par):
     """
     Recursively saves block parameters from definition.
+
+    Args:
+        block_par: lark parse subtree with block_par node as root.
     """
     param = block_par.children[0].children[0].value[1:]
 
@@ -478,6 +480,14 @@ def add_expr(expr, tree_expr):
     add_expr_simple(expr, tree_expr.children[0].children[0])
 
 def add_assigns(block, tree_block_stat, order=1):
+    """
+    Recursively adds assignements to the xml tree.
+
+    Args:
+        block: xml block tree node.
+        tree_block_stat: lark parse subtree with block_stat node as root.
+        order: assignement order.
+    """
     assign = ET.SubElement(block, "assign")
     assign.set("order", str(order))
     ET.SubElement(assign, "var", attrib={"name": tree_block_stat.children[0].children[0].value})
@@ -489,6 +499,18 @@ def add_assigns(block, tree_block_stat, order=1):
         add_assigns(block, tree_block_stat.children[2], order + 1)
     
 def add_params(block, tree_block_par, order=1, param_n=1):
+    """
+    Recursively adds parameters to the xml tree.
+
+    Args:
+        block: xml block tree node.
+        tree_block_par: lark parse subtree with block_par node as root.
+        order: parameter order.
+        param_n: parameter number.
+    
+    Returns:
+        Number of parameters (used in block literals).
+    """
     if len(tree_block_par.children) == 0:
         return 0
     
@@ -501,6 +523,13 @@ def add_params(block, tree_block_par, order=1, param_n=1):
     return param_n
     
 def add_methods_blocks(class_, tree_method):
+    """
+    Recursively adds methods to the xml tree.
+
+    Args:
+        class_: xml class tree node.
+        tree_method: lark parse subtree with method node as root.
+    """
     sel = get_selector(tree_method.children[0])
     method = ET.SubElement(class_, "method")
     method.set("selector", sel)
@@ -518,6 +547,13 @@ def add_methods_blocks(class_, tree_method):
         add_methods_blocks(class_, tree_method.children[2])
 
 def add_classes(program, tree_prog):
+    """
+    Recursiively adds classes to the xml tree.
+
+    Args:
+        program: xml program tree node.
+        tree_prog: lark parse subtree with program node as root
+    """
     tree_c = tree_prog.children[0]
     class_ = ET.SubElement(program, "class")
     class_.set("name", tree_c.children[0].children[0].value)
@@ -551,12 +587,19 @@ def tree_to_xml(tree):
     return xml_tree
 
 def xml_as_str(xml):
+    """
+    Post-process xml tree and convert it to string.
+
+    Args:
+        xml: xml tree.
+
+    Returns:
+        xml string representation.
+    """
     xml_str =  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + ET.tostring(xml.getroot()).__str__()[2:-1]
     xml_str = re.sub(r"&#10;", "&nbsp;", xml_str)
-    # xml_str = re.sub(r"\\'", r"\&apos;", xml_str)
-    # xml_str = re.sub(r"\"", r"\&quot;", xml_str)
-    # xml_str = re.sub("\\\\n", "\\n", xml_str)
-    xml_str = re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), xml_str)
+    xml_str = re.sub(r"\\\\", r"\\", xml_str)
+    xml_str = re.sub(r"\\\\'", r"\&apos;", xml_str)
     return xml_str
 
 def main():
@@ -566,7 +609,7 @@ def main():
     analyze_semantics(tree)
     xml = tree_to_xml(tree)
     xml_str = xml_as_str(xml)
-    print(repr(xml_str))
+    print(xml_str)
 
 if __name__ == "__main__":
     main()
