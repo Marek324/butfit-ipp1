@@ -89,6 +89,9 @@ COMMENT: /"([^"]*)"/
 def save_description(token):
     """
     Callback function to save first comment as description.
+
+    Args:
+        token: lark token with comment.
     """
     global description
     comment = token.value[1:-1]
@@ -122,7 +125,7 @@ def parse_code(code):
         tree = parser.parse(code)
         # pydot__tree_to_png(tree, "parse_tree.png")
         # print(description)
-        # print(tree.pretty())
+        print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
@@ -199,7 +202,7 @@ def check_expr(def_vars, expr, analyzer):
         if isinstance(child, Token):
             continue
 
-        if child.data == "expr_base" or child.data == "expr_sel":
+        if child.data == "expr_base" or child.data == "expr_sel" or child.data == "expr":
             term = child.children[0]
             if term.data == "term_id":
                 var_name = term.children[0].value
@@ -251,7 +254,6 @@ def get_block_params(block_par):
     """
     param = block_par.children[0].children[0].value[1:]
 
-    
     if len(block_par.children) == 1:
         return [param]
     
@@ -328,7 +330,6 @@ class SemanticAnalyzer(Visitor):
             
         check_assignements(block_params, def_vars, tree.children[stat_index], self)
 
-        
         return tree
     
     def expr_base(self, tree):            
@@ -354,7 +355,6 @@ class SemanticAnalyzer(Visitor):
             sys.exit(SYNTAX_ERROR)
         
         return tree
-
 
     def final_check(self):
         if "Main" not in self.classes:
@@ -391,7 +391,119 @@ def analyze_semantics(tree):
     sem_analyzer.visit_topdown(tree)
     sem_analyzer.final_check()
 
-def add_methods(class_, tree_method):
+def add_expr_simple(expr, tree_exp):
+    """
+    Adds simple expression (literal, var, block) to the xml tree.
+
+    Args:
+        expr: xml tree node.
+        tree_exp: lark parse subtree with expr_base first child node as root.
+    """
+    match tree_exp.data:
+        case "term_int":
+            ET.SubElement(expr, "literal", attrib={"class": "Integer", "value": tree_exp.children[0].value})
+        case "term_str":
+            ET.SubElement(expr, "literal", attrib={"class": "String", "value": tree_exp.children[0].value[1:-1]})
+        case "term_cid":
+            ET.SubElement(expr, "literal", attrib={"class": "class", "value": tree_exp.children[0].value})
+        case "term_id":
+            match tree_exp.children[0].value:
+                case "true":
+                    ET.SubElement(expr, "literal", attrib={"class": "True", "value": "true"})
+                case "false":
+                    ET.SubElement(expr, "literal", attrib={"class": "False", "value": "false"})
+                case "nil":
+                    ET.SubElement(expr, "literal", attrib={"class": "Nil", "value": "nil"})
+                case _:
+                    ET.SubElement(expr, "var", attrib={"name": tree_exp.children[0].value})
+        case "block":
+            block = ET.SubElement(expr, "block")
+            param_n = 0
+            for i in range(len(tree_exp.children)):
+                if tree_exp.children[i].data == "block_par":
+                    param_n = add_params(block, tree_exp.children[i])
+                if tree_exp.children[i].data == "block_stat":
+                    add_assigns(block, tree_exp.children[i])
+                    
+            block.set("arity", str(param_n))
+
+
+def add_expr_send(send, tree_expr_sel, arg_n=1):
+    """
+    Adds send arguments to the xml tree.
+
+    Args:
+        send: xml send tree node.
+        tree_exp_sel: lark parse subtree with expr node as root.
+    """
+    send.attrib["selector"] += tree_expr_sel.children[0].children[0].value
+    arg = ET.SubElement(send, "arg", {"order": str(arg_n)})
+    arg_expr = ET.SubElement(arg, "expr")
+    
+    if tree_expr_sel.children[1].children[0].data == "expr":
+        add_expr(arg_expr, tree_expr_sel.children[1].children[0])
+    else:
+        add_expr_simple(arg_expr, tree_expr_sel.children[1].children[0])
+
+    if len(tree_expr_sel.children) == 3:
+        add_expr_send(send, tree_expr_sel.children[2], arg_n + 1)
+
+    
+def add_expr(expr, tree_expr):
+    """
+    Adds expression to the xml tree.
+
+    Args:
+        expr: xml expr tree node.
+        tree_expr: lark parse subtree with expr node as root.
+    """
+    if tree_expr.children[0].children[0].data == 'expr':
+        add_expr(expr, tree_expr.children[0].children[0])
+        return
+
+    if len(tree_expr.children[1].children) > 0:
+        send = ET.SubElement(expr, "send", attrib={"selector": ""})
+        
+        # receiver
+        send_expr = ET.SubElement(send, "expr")
+        if tree_expr.children[0].children[0].data == 'expr':
+            add_expr(send_expr, tree_expr.children[0].children[0])
+        else:
+            add_expr_simple(send_expr, tree_expr.children[0].children[0])
+
+        if tree_expr.children[1].children[0].data != 'expr_sel':
+            send.attrib["selector"] = tree_expr.children[1].children[0].children[0].value
+            return
+        
+        add_expr_send(send, tree_expr.children[1].children[0])
+        return
+
+    add_expr_simple(expr, tree_expr.children[0].children[0])
+
+def add_assigns(block, tree_block_stat, order=1):
+    assign = ET.SubElement(block, "assign")
+    assign.set("order", str(order))
+    ET.SubElement(assign, "var", attrib={"name": tree_block_stat.children[0].children[0].value})
+    expr = ET.SubElement(assign, "expr")
+    
+    add_expr(expr, tree_block_stat.children[1])
+
+    if (len(tree_block_stat.children) == 3):
+        add_assigns(block, tree_block_stat.children[2], order + 1)
+    
+def add_params(block, tree_block_par, order=1, param_n=1):
+    if len(tree_block_par.children) == 0:
+        return 0
+    
+    param = ET.SubElement(block, "parameter")
+    param.set("order", str(order))
+    param.set("name", tree_block_par.children[0].children[0].value[1:])
+    if  (len(tree_block_par.children) > 1):
+        add_params(block, tree_block_par.children[1], order=(order + 1), param_n=(param_n + 1))
+
+    return param_n
+    
+def add_methods_blocks(class_, tree_method):
     sel = get_selector(tree_method.children[0])
     method = ET.SubElement(class_, "method")
     method.set("selector", sel)
@@ -399,9 +511,14 @@ def add_methods(class_, tree_method):
     block = ET.SubElement(method, "block")
     arity = len(sel.split(":")) - 1
     block.set("arity", str(arity))
+    for i in range(len(tree_method.children[1].children)):
+        if tree_method.children[1].children[i].data == "block_par":
+            add_params(block, tree_method.children[1].children[i])
+        if tree_method.children[1].children[i].data == "block_stat":
+            add_assigns(block, tree_method.children[1].children[i])
 
     if len(tree_method.children) == 3:
-        add_methods(class_, tree_method.children[2])
+        add_methods_blocks(class_, tree_method.children[2])
 
 def add_classes(program, tree_prog):
     tree_c = tree_prog.children[0]
@@ -409,12 +526,11 @@ def add_classes(program, tree_prog):
     class_.set("name", tree_c.children[0].children[0].value)
     class_.set("parent", tree_c.children[1].children[0].value)
     if(len(tree_c.children) == 3):
-        add_methods(class_, tree_c.children[2])
+        add_methods_blocks(class_, tree_c.children[2])
         
     if len(tree_prog.children) == 2:
         add_classes(program, tree_prog.children[1])
             
-
 def tree_to_xml(tree):
     """
     Convert tree to xml representation.
@@ -437,9 +553,13 @@ def tree_to_xml(tree):
     
     return xml_tree
 
-def fix_xml(xml_str):
+def xml_as_str(xml):
+    xml_str =  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + ET.tostring(xml.getroot()).__str__()[2:-1]
     xml_str = re.sub(r"&#10;", "&nbsp;", xml_str)
-    xml_str = re.sub(r"\\'", "&apos;", xml_str)
+    # xml_str = re.sub(r"\\'", r"\&apos;", xml_str)
+    # xml_str = re.sub(r"\"", r"\&quot;", xml_str)
+    # xml_str = re.sub("\\\\n", "\\n", xml_str)
+    xml_str = re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), xml_str)
     return xml_str
 
 def main():
@@ -448,9 +568,8 @@ def main():
     tree = parse_code(code)
     analyze_semantics(tree)
     xml = tree_to_xml(tree)
-    xml_str =  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + ET.tostring(xml.getroot()).__str__()[2:-1]
-    xml_str = fix_xml(xml_str)
-    print(xml_str)
+    xml_str = xml_as_str(xml)
+    print(repr(xml_str))
 
 if __name__ == "__main__":
     main()
