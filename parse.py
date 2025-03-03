@@ -596,7 +596,7 @@ def xml_as_str(xml):
     Returns:
         xml string representation.
     """
-    xml_str =  "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + ET.tostring(xml.getroot()).__str__()[2:-1]
+    xml_str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + ET.tostring(xml.getroot()).__str__()[2:-1]
     xml_str = re.sub(r"&#10;", "&nbsp;", xml_str)
     xml_str = re.sub(r"\\\\", r"\\", xml_str)
     xml_str = re.sub(r"\\\\'", r"\&apos;", xml_str)
