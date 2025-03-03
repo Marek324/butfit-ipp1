@@ -123,9 +123,6 @@ def parse_code(code):
     """
     try:
         tree = parser.parse(code)
-        # pydot__tree_to_png(tree, "parse_tree.png")
-        # print(description)
-        print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
@@ -457,7 +454,7 @@ def add_expr(expr, tree_expr):
         expr: xml expr tree node.
         tree_expr: lark parse subtree with expr node as root.
     """
-    if tree_expr.children[0].children[0].data == 'expr':
+    if tree_expr.children[0].children[0].data == 'expr' and len(tree_expr.children[1].children) == 0:
         add_expr(expr, tree_expr.children[0].children[0])
         return
 
