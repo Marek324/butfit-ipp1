@@ -120,7 +120,6 @@ def parse_code(code):
     """
     try:
         tree = parser.parse(code)
-        print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
