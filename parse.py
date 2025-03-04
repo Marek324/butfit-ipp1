@@ -165,6 +165,9 @@ def get_methods(method, class_id):
         SEM_OTHER if a method is defined more than once.
     """
     method_sel = get_selector(method.children[0])
+    if method_sel in ["new", "from:", "read"]:
+        print(f"Semantic error: Method {method_sel} redefinition in class {class_id}", file=sys.stderr)
+        sys.exit(SEM_OTHER)
     
     # method has 2 or 3 children: selector, block, method (if there is another method)
     if len(method.children) == 2:
@@ -176,44 +179,6 @@ def get_methods(method, class_id):
         sys.exit(SEM_OTHER)
     
     return methods
-
-def check_expr_o(def_vars, expr, analyzer):
-    """
-    Recursively checks for undefined variables and class methods in the expression.
-
-    Args:
-        def_vars: variables defined in the block.
-        expr: lark parse subtree with expr node as root.
-        analyzer: lark visitor instance.
-
-    Exits:
-        SEM_UNDEF if an undefined variable is used.
-    """
-    if isinstance(expr, Token):
-        return
-    
-    for child in expr.children:
-        if isinstance(child, Token):
-            continue
-
-        if child.data == "expr_base" or child.data == "expr_sel" or child.data == "expr":
-            term = child.children[0]
-            if term.data == "term_id":
-                var_name = term.children[0].value
-                if var_name not in def_vars:
-                    print(f"Semantic error: Undefined variable {var_name}", file=sys.stderr)
-                    sys.exit(SEM_UNDEF)
-            if child.data != "block":
-                check_expr_o(def_vars, child, analyzer)
-        
-        if child.data == "expr_tail" and len(child.children) > 0:
-            if child.children[0].data == "term_id":
-                sel = child.children[0].children[0].value
-                if sel in analyzer.reserved_ids:
-                    print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
-                    sys.exit(SYNTAX_ERROR)
-            if child.data != "block":
-                check_expr_o(def_vars, child, analyzer)
 
 def check_expr_base(def_vars, expr_base, analyzer):
     """
