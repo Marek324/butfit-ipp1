@@ -165,9 +165,6 @@ def get_methods(method, class_id):
         SEM_OTHER if a method is defined more than once.
     """
     method_sel = get_selector(method.children[0])
-    if method_sel in ["new", "from:", "read"]:
-        print(f"Semantic error: Method {method_sel} redefinition in class {class_id}", file=sys.stderr)
-        sys.exit(SEM_OTHER)
     
     # method has 2 or 3 children: selector, block, method (if there is another method)
     if len(method.children) == 2:
