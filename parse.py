@@ -120,6 +120,7 @@ def parse_code(code):
     """
     try:
         tree = parser.parse(code)
+        print(tree.pretty())
         return tree
     except UnexpectedCharacters as e:
         print("Lexical error: " + str(e), file=sys.stderr)
@@ -149,7 +150,7 @@ def get_selector(selector):
         return sel
     else:
         return sel + get_selector(selector.children[1])
-
+    
 def get_methods(method, class_id):
     """
     Recursively saves class instance methods from definition.
@@ -177,9 +178,9 @@ def get_methods(method, class_id):
     
     return methods
 
-def check_expr(def_vars, expr, analyzer):
+def check_expr_o(def_vars, expr, analyzer):
     """
-    Recursively checks for undefined variables in the expression.
+    Recursively checks for undefined variables and class methods in the expression.
 
     Args:
         def_vars: variables defined in the block.
@@ -204,7 +205,7 @@ def check_expr(def_vars, expr, analyzer):
                     print(f"Semantic error: Undefined variable {var_name}", file=sys.stderr)
                     sys.exit(SEM_UNDEF)
             if child.data != "block":
-                check_expr(def_vars, child, analyzer)
+                check_expr_o(def_vars, child, analyzer)
         
         if child.data == "expr_tail" and len(child.children) > 0:
             if child.children[0].data == "term_id":
@@ -213,7 +214,114 @@ def check_expr(def_vars, expr, analyzer):
                     print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
                     sys.exit(SYNTAX_ERROR)
             if child.data != "block":
-                check_expr(def_vars, child, analyzer)
+                check_expr_o(def_vars, child, analyzer)
+
+def check_expr_base(def_vars, expr_base, analyzer):
+    """
+    Checks for undefined variables and class methods in the expression base.
+
+    Args:
+        def_vars: variables defined in the block.
+        expr_base: lark parse subtree with expr_base node as root.
+        analyzer: lark visitor instance.
+
+    Exits:
+        SEM_UNDEF if an undefined variable is used.
+    """
+    if (expr_base.children[0].data == "expr"):
+        check_expr(def_vars, expr_base.children[0], analyzer)
+    elif (expr_base.children[0].data == "term_id"):
+        var_name = expr_base.children[0].children[0].value
+        if var_name not in def_vars:
+            print(f"Semantic error: Undefined variable {var_name}", file=sys.stderr)
+            sys.exit(SEM_UNDEF)
+
+def check_expr_sel(def_vars, expr_sel, analyzer):
+    """
+    Checks for undefined variables and class methods in the expression tail.
+
+    Args:
+        def_vars: variables defined in the block.
+        expr_sel: lark parse subtree with expr_sel node as root.
+        analyzer: lark visitor instance.
+
+    Returns:
+        selector string.
+
+    Exits:
+        SEM_UNDEF if an undefined variable is used..
+    """
+    check_expr_base(def_vars, expr_sel.children[1], analyzer)
+
+    if len(expr_sel.children) == 2:
+        return expr_sel.children[0].children[0].value
+    else:
+        return expr_sel.children[0].children[0].value + check_expr_sel(def_vars, expr_sel.children[2], analyzer)
+
+def check_expr_tail(def_vars, expr_tail, analyzer):
+    """
+    Checks for undefined variables and class methods in the expression tail.
+
+    Args:
+        def_vars: variables defined in the block.
+        expr_tail: lark parse subtree with expr_tail node as root.
+        analyzer: lark visitor instance.
+
+    Exits:
+        SYNTAX_ERROR if an reserved keyword is used as selector.
+    """
+    if len(expr_tail.children) == 0:
+        return
+    
+    if expr_tail.children[0].data == "term_id":
+        sel = expr_tail.children[0].children[0].value
+        if sel in analyzer.reserved_ids:
+            print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
+            sys.exit(SYNTAX_ERROR)
+    elif expr_tail.children[0].data == "expr_sel":
+        sel = check_expr_sel(def_vars, expr_tail.children[0], analyzer)
+    else: 
+        check_expr_base(def_vars, expr_tail.children[0].children[1], analyzer)
+
+def check_expr(def_vars, expr, analyzer):
+    """
+    Recursively checks for undefined variables and class methods in the expression.
+
+    Args:
+        def_vars: variables defined in the block.
+        expr: lark parse subtree with expr node as root.
+        analyzer: lark visitor instance.
+
+    Exits:
+        SEM_UNDEF if an undefined class method is used.
+    """
+    base = expr.children[0].children[0]
+    if base.data == 'expr' and len(expr.children[1].children) == 0:
+        check_expr(def_vars, base, analyzer)
+        return
+    elif base.data == 'block':
+        return
+    elif base.data == 'term_cid':
+        class_id = base.children[0].value
+        if class_id not in analyzer.classes:
+            analyzer.classes[class_id] = {"defined": False}
+
+        if expr.children[1].children[0].data == 'expr_sel':
+            sel = check_expr_sel(def_vars, expr.children[1].children[0], analyzer)
+            if sel != "from:":
+                print(f"Semantic error: Undefined class method {sel} in class {class_id}", file=sys.stderr)
+                sys.exit(SEM_UNDEF)
+        elif expr.children[1].children[0].data == 'term_id':
+            sel = expr.children[1].children[0].children[0].value
+            if sel == "read":
+                analyzer.classes[class_id]["used_read"] = True
+            elif sel != "new":
+                print(f"Semantic error: Undefined class method {sel} in class {class_id}", file=sys.stderr)
+                sys.exit(SEM_UNDEF)
+            
+    check_expr_base(def_vars, expr.children[0], analyzer)
+    check_expr_tail(def_vars, expr.children[1], analyzer)
+
 
 def check_assignements(block_params, def_vars, block_stat, analyzer):
     """
@@ -224,8 +332,11 @@ def check_assignements(block_params, def_vars, block_stat, analyzer):
         def_vars: variables defined in the block.
         block_stat: lark parse subtree with block_stat node as root.
         analyzer: lark visitor instance.
-    """
 
+    Exits:
+        SEM_VAR_CONFLICT if a variable is redefined.
+        SYNTAX_ERROR if an reserved keyword is used as variable name.
+    """
     check_expr(def_vars, block_stat.children[1], analyzer)
 
     var_name = block_stat.children[0].children[0].value
@@ -261,6 +372,24 @@ def get_block_params(block_par):
     
     return methods
 
+def is_string_subclass(class_name, classes):
+    """
+    Checks if the class is a subclass of String.
+
+    Args:
+        class_name: class name.
+        classes: class dictionary.
+
+    Returns:
+        True if the class is a subclass of String, False otherwise.
+    """
+    if class_name == "String":
+        return True
+    if classes[class_name]["parent"] is None:
+        return False
+    
+    return is_string_subclass(classes[class_name]["parent"], classes)
+
 # Lark visitor for semantic analysis
 class SemanticAnalyzer(Visitor):
     def __init__(self):
@@ -268,7 +397,11 @@ class SemanticAnalyzer(Visitor):
         self.reserved_ids = ['self', 'super', 'true', 'false', 'nil'] # 'class' is checked separately
         self.classes = {}
         for builtin_class in self.builtin_classes:
-            self.classes[builtin_class] = {"defined": True}
+            self.classes[builtin_class] = {"defined": True, "used_read": False}
+            if builtin_class == "Object":
+                self.classes[builtin_class]["parent"] = None
+            else:
+                self.classes[builtin_class]["parent"] = "Object"
         
     def class_(self, tree):
         class_id = tree.children[0].children[0].value
@@ -281,8 +414,14 @@ class SemanticAnalyzer(Visitor):
         if class_id in self.classes and self.classes[class_id]["defined"]:
             print(f"Semantic error: Class {class_id} redefinition", file=sys.stderr)
             sys.exit(SEM_OTHER)
+        elif class_id in self.classes:
+            self.classes[class_id]["defined"] = True
+            self.classes[class_id]["parent"] = class_parent
+            if "used_read" not in self.classes[class_id]:
+                self.classes[class_id]["used_read"] = False
         else:
-            self.classes[class_id]= {"defined": True}
+            self.classes[class_id]= {"defined": True, "parent": class_parent, "used_read": False}
+
             if len(tree.children) == 3:
                 self.classes[class_id]["methods"] = get_methods(tree.children[2], class_id)
             else:
@@ -366,6 +505,10 @@ class SemanticAnalyzer(Visitor):
             if self.classes[class_name]["defined"] == False:
                 print(f"Semantic error: Class {class_name} is missing definition", file=sys.stderr)
                 sys.exit(SEM_UNDEF)
+            elif self.classes[class_name]["used_read"] == True and not is_string_subclass(class_name, self.classes):
+                print(f"Semantic error: {class_name} does not have 'read' class method", file=sys.stderr)
+                sys.exit(SEM_UNDEF)
+                
 
 def analyze_semantics(tree):
     """
