@@ -351,6 +351,29 @@ def is_string_subclass(class_name, classes):
     
     return is_string_subclass(classes[class_name]["parent"], classes)
 
+def check_circular_dependency(class_name, classes, visited):
+    """
+    Checks for circular dependencies in class definitions
+
+    Args:
+        class_name: class name.
+        classes: class dictionary.
+        visited: list of visited classes.
+
+    Exits:
+        SEM_OTHER if a circular dependency is found.
+    """
+    if classes[class_name]["parent"] is None:
+        return
+ 
+    if classes[class_name]["parent"] in visited:
+        print(f"Semantic error: Circular dependency in class {class_name}", file=sys.stderr)
+        sys.exit(SEM_OTHER)
+
+    visited.append(class_name)
+    check_circular_dependency(classes[class_name]["parent"], classes, visited)
+
+
 # Lark visitor for semantic analysis
 class SemanticAnalyzer(Visitor):
     def __init__(self):
@@ -395,6 +418,9 @@ class SemanticAnalyzer(Visitor):
     
     def method(self, tree):
         sel = get_selector(tree.children[0])
+        if sel in self.reserved_ids:
+            print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
+            sys.exit(SYNTAX_ERROR)
         args_n = len(sel.split(":")) - 1
         params_n = 0
         
@@ -469,7 +495,9 @@ class SemanticAnalyzer(Visitor):
             elif self.classes[class_name]["used_read"] == True and not is_string_subclass(class_name, self.classes):
                 print(f"Semantic error: {class_name} does not have 'read' class method", file=sys.stderr)
                 sys.exit(SEM_UNDEF)
-                
+
+        for class_name in self.classes:
+            check_circular_dependency(class_name, self.classes, [])
 
 def analyze_semantics(tree):
     """
