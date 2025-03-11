@@ -2,7 +2,6 @@
 # Author: Marek hric xhricma00
 
 import sys, re
-from lark import Lark, Visitor, Token, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
 import xml.etree.ElementTree as ET
 
 
@@ -99,7 +98,6 @@ def save_description(token):
     else:
         return ""
 
-parser = Lark(grammar, start="start", parser="lalr", lexer_callbacks={"COMMENT": save_description})
 LANGUAGE = "SOL25"
 description = None
 
@@ -118,6 +116,8 @@ def parse_code(code):
         SYNTAX_ERROR if a syntactic error occurs.
         INTERNAL_ERROR if an internal error occurs.
     """
+    from lark import Lark, UnexpectedCharacters, UnexpectedToken, UnexpectedEOF
+    parser = Lark(grammar, start="start", parser="lalr", lexer_callbacks={"COMMENT": save_description})
     try:
         tree = parser.parse(code)
         return tree
@@ -373,132 +373,6 @@ def check_circular_dependency(class_name, classes, visited):
     visited.append(class_name)
     check_circular_dependency(classes[class_name]["parent"], classes, visited)
 
-
-# Lark visitor for semantic analysis
-class SemanticAnalyzer(Visitor):
-    def __init__(self):
-        self.builtin_classes = ["Object", "Nil", "True", "False", "Integer", "String", "Block"]
-        self.reserved_ids = ['self', 'super', 'true', 'false', 'nil'] # 'class' is checked separately
-        self.classes = {}
-        for builtin_class in self.builtin_classes:
-            self.classes[builtin_class] = {"defined": True, "used_read": False}
-            if builtin_class == "Object":
-                self.classes[builtin_class]["parent"] = None
-            else:
-                self.classes[builtin_class]["parent"] = "Object"
-        
-    def class_(self, tree):
-        class_id = tree.children[0].children[0].value
-        class_parent = tree.children[1].children[0].value
-        
-        if class_id in self.builtin_classes:
-            print(f"Semantic error: Builtin class {class_id} redefinition", file=sys.stderr)
-            sys.exit(SEM_OTHER)
-
-        if class_id in self.classes and self.classes[class_id]["defined"]:
-            print(f"Semantic error: Class {class_id} redefinition", file=sys.stderr)
-            sys.exit(SEM_OTHER)
-        elif class_id in self.classes:
-            self.classes[class_id]["defined"] = True
-            self.classes[class_id]["parent"] = class_parent
-            if "used_read" not in self.classes[class_id]:
-                self.classes[class_id]["used_read"] = False
-        else:
-            self.classes[class_id]= {"defined": True, "parent": class_parent, "used_read": False}
-
-            if len(tree.children) == 3:
-                self.classes[class_id]["methods"] = get_methods(tree.children[2], class_id)
-            else:
-                self.classes[class_id]["methods"] = []
-
-        if class_parent not in self.classes:
-            self.classes[class_parent] = {"defined": False}
-
-        return tree
-    
-    def method(self, tree):
-        sel = get_selector(tree.children[0])
-        if sel in self.reserved_ids:
-            print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
-            sys.exit(SYNTAX_ERROR)
-        args_n = len(sel.split(":")) - 1
-        params_n = 0
-        
-        if len(tree.children[1].children) > 0:    
-            if tree.children[1].children[0].data == "block_par":
-                params_n = len(get_block_params(tree.children[1].children[0]))
-
-        if params_n != args_n:
-            print(f"Semantic error: Method {sel} has wrong number of arguments", file=sys.stderr)
-            sys.exit(SEM_ARITY)
-        
-        return tree
-
-    def block(self, tree):
-        # Empty block
-        if (len(tree.children) == 0):
-            return tree
-        
-        stat_index = 0
-        block_params = []
-        def_vars = self.reserved_ids.copy()
-
-        if tree.children[0].data == "block_par":
-            stat_index = 1
-            block_params = get_block_params(tree.children[0])
-            def_vars.extend(block_params)
-
-            if len(tree.children) != 2:
-                return tree
-            
-        check_assignements(block_params, def_vars, tree.children[stat_index], self)
-
-        return tree
-    
-    def expr_base(self, tree):            
-        if tree.children[0].data == "term_cid":
-            class_id = tree.children[0].children[0].value
-            if class_id not in self.classes:
-                self.classes[class_id] = {"defined": False}
-
-        return tree
-    
-    def term_id(self, tree):
-        id = tree.children[0].value
-        if id == 'class':
-            print("Syntax error: 'class' is a reserved keyword", file=sys.stderr)
-            sys.exit(SYNTAX_ERROR)
-
-        return tree
-
-    def term_block_par_id(self, tree):
-        id = tree.children[0].value[1:]
-        if id == 'class' or id in self.reserved_ids:
-            print(f"Syntax error: '{id}' is a reserved keyword", file=sys.stderr)
-            sys.exit(SYNTAX_ERROR)
-        
-        return tree
-
-    def final_check(self):
-        if "Main" not in self.classes:
-            print("Semantic error: Main class is missing", file=sys.stderr)
-            sys.exit(SEM_MISSING_MAIN_RUN)
-
-        if "run" not in self.classes["Main"]["methods"]:
-            print("Semantic error: Main class is missing run method", file=sys.stderr)
-            sys.exit(SEM_MISSING_MAIN_RUN)
-
-        for class_name in self.classes:
-            if self.classes[class_name]["defined"] == False:
-                print(f"Semantic error: Class {class_name} is missing definition", file=sys.stderr)
-                sys.exit(SEM_UNDEF)
-            elif self.classes[class_name]["used_read"] == True and not is_string_subclass(class_name, self.classes):
-                print(f"Semantic error: {class_name} does not have 'read' class method", file=sys.stderr)
-                sys.exit(SEM_UNDEF)
-
-        for class_name in self.classes:
-            check_circular_dependency(class_name, self.classes, [])
-
 def analyze_semantics(tree):
     """
     Performs semantic analysis of the parse tree using lark Visitor.
@@ -516,6 +390,133 @@ def analyze_semantics(tree):
         SEM_VAR_CONFLICT if a variable is redefined.
         INTERNAL_ERROR if an internal error occurs.
     """
+
+    from lark import Visitor
+    # Lark visitor for semantic analysis
+    class SemanticAnalyzer(Visitor):
+        def __init__(self):
+            self.builtin_classes = ["Object", "Nil", "True", "False", "Integer", "String", "Block"]
+            self.reserved_ids = ['self', 'super', 'true', 'false', 'nil'] # 'class' is checked separately
+            self.classes = {}
+            for builtin_class in self.builtin_classes:
+                self.classes[builtin_class] = {"defined": True, "used_read": False}
+                if builtin_class == "Object":
+                    self.classes[builtin_class]["parent"] = None
+                else:
+                    self.classes[builtin_class]["parent"] = "Object"
+            
+        def class_(self, tree):
+            class_id = tree.children[0].children[0].value
+            class_parent = tree.children[1].children[0].value
+            
+            if class_id in self.builtin_classes:
+                print(f"Semantic error: Builtin class {class_id} redefinition", file=sys.stderr)
+                sys.exit(SEM_OTHER)
+
+            if class_id in self.classes and self.classes[class_id]["defined"]:
+                print(f"Semantic error: Class {class_id} redefinition", file=sys.stderr)
+                sys.exit(SEM_OTHER)
+            elif class_id in self.classes:
+                self.classes[class_id]["defined"] = True
+                self.classes[class_id]["parent"] = class_parent
+                if "used_read" not in self.classes[class_id]:
+                    self.classes[class_id]["used_read"] = False
+            else:
+                self.classes[class_id]= {"defined": True, "parent": class_parent, "used_read": False}
+
+                if len(tree.children) == 3:
+                    self.classes[class_id]["methods"] = get_methods(tree.children[2], class_id)
+                else:
+                    self.classes[class_id]["methods"] = []
+
+            if class_parent not in self.classes:
+                self.classes[class_parent] = {"defined": False}
+
+            return tree
+        
+        def method(self, tree):
+            sel = get_selector(tree.children[0])
+            if sel in self.reserved_ids:
+                print(f"Syntax error: '{sel}' is a reserved keyword", file=sys.stderr)
+                sys.exit(SYNTAX_ERROR)
+            args_n = len(sel.split(":")) - 1
+            params_n = 0
+            
+            if len(tree.children[1].children) > 0:    
+                if tree.children[1].children[0].data == "block_par":
+                    params_n = len(get_block_params(tree.children[1].children[0]))
+
+            if params_n != args_n:
+                print(f"Semantic error: Method {sel} has wrong number of arguments", file=sys.stderr)
+                sys.exit(SEM_ARITY)
+            
+            return tree
+
+        def block(self, tree):
+            # Empty block
+            if (len(tree.children) == 0):
+                return tree
+            
+            stat_index = 0
+            block_params = []
+            def_vars = self.reserved_ids.copy()
+
+            if tree.children[0].data == "block_par":
+                stat_index = 1
+                block_params = get_block_params(tree.children[0])
+                def_vars.extend(block_params)
+
+                if len(tree.children) != 2:
+                    return tree
+                
+            check_assignements(block_params, def_vars, tree.children[stat_index], self)
+
+            return tree
+        
+        def expr_base(self, tree):            
+            if tree.children[0].data == "term_cid":
+                class_id = tree.children[0].children[0].value
+                if class_id not in self.classes:
+                    self.classes[class_id] = {"defined": False}
+
+            return tree
+        
+        def term_id(self, tree):
+            id = tree.children[0].value
+            if id == 'class':
+                print("Syntax error: 'class' is a reserved keyword", file=sys.stderr)
+                sys.exit(SYNTAX_ERROR)
+
+            return tree
+
+        def term_block_par_id(self, tree):
+            id = tree.children[0].value[1:]
+            if id == 'class' or id in self.reserved_ids:
+                print(f"Syntax error: '{id}' is a reserved keyword", file=sys.stderr)
+                sys.exit(SYNTAX_ERROR)
+            
+            return tree
+
+        def final_check(self):
+            if "Main" not in self.classes:
+                print("Semantic error: Main class is missing", file=sys.stderr)
+                sys.exit(SEM_MISSING_MAIN_RUN)
+
+            if "run" not in self.classes["Main"]["methods"]:
+                print("Semantic error: Main class is missing run method", file=sys.stderr)
+                sys.exit(SEM_MISSING_MAIN_RUN)
+
+            for class_name in self.classes:
+                if self.classes[class_name]["defined"] == False:
+                    print(f"Semantic error: Class {class_name} is missing definition", file=sys.stderr)
+                    sys.exit(SEM_UNDEF)
+                elif self.classes[class_name]["used_read"] == True and not is_string_subclass(class_name, self.classes):
+                    print(f"Semantic error: {class_name} does not have 'read' class method", file=sys.stderr)
+                    sys.exit(SEM_UNDEF)
+
+            for class_name in self.classes:
+                check_circular_dependency(class_name, self.classes, [])
+
     sem_analyzer = SemanticAnalyzer()
     sem_analyzer.visit_topdown(tree)
     sem_analyzer.final_check()
