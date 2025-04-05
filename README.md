@@ -1,4 +1,6 @@
-# IPP parser interpreter
+# SOL25 parser
+
+Parser for SOL25 language. 
 
 ## Installation
 ```
